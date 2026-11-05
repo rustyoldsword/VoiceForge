@@ -1,0 +1,18 @@
+[
+  {
+    "id": "maleguard_line_001",
+    "vt": "maleguard",
+    "text": "Welcome, traveler.",
+    "targets": [
+      "Sound/Voice/Example.esp/maleguard/examplequest_greeting_00000800_1.fuz"
+    ]
+  },
+  {
+    "id": "femalenord_line_001",
+    "vt": "femalenord",
+    "text": "Welcome, traveler.",
+    "targets": [
+      "Sound/Voice/Example.esp/femalenord/examplequest_greeting_00000800_1.fuz"
+    ]
+  }
+]

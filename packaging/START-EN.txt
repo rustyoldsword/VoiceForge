@@ -1,0 +1,22 @@
+VoiceForge 0.3.0 - Skyrim Voice Studio by Dwemer Mods (https://dwemermods.com)
+
+Start: open VoiceForge.exe.
+Keep the _internal folder next to the EXE. No Python install is needed.
+Interface language: Settings -> Interface language (applies after a restart).
+
+First project:
+1. Settings: choose the tools folder (LipGenerator.exe, xWMAEncode.exe, ffmpeg.exe and
+   FonixData.cdf) and your local file with FISH_API_KEY, or set the environment variable.
+   Save the settings.
+2. Click "+ New project" and choose a lines.csv + paths.csv pair or an existing jobs.json.
+3. Pick a separate, new, empty project folder.
+4. Voice references: choose ref_candidates.json; the refs folder must sit next to it.
+5. Start with "5 sample WAVs" and listen in the line queue, then run the pipeline.
+
+Results go to output\ inside the project.
+templates\ holds input templates, examples and the input guide.
+xEdit Scripts\ holds the exporter that writes lines.csv + paths.csv from a plugin.
+Game data, audio references, external tools and the API key are not included.
+
+Full guide: README.md.
+Do not publish your projects, key files, logs, queue databases or screenshots with private paths.

@@ -1,0 +1,3 @@
+id,info_formid,response_number,needs_voice,voice_text (stage directions removed),subtitle_text (as in game unchanged)
+LINE_001,000800:Example.esp,1,yes,"Welcome, traveler.","[smiles] Welcome, traveler."
+LINE_002,000801:Example.esp,1,no,,[silence]

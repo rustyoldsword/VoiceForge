@@ -1,0 +1,4 @@
+game_path (relative to Data),info_formid,response_number,voice_type
+Sound/Voice/Example.esp/maleguard/examplequest_greeting_00000800_1.fuz,000800:Example.esp,1,maleguard
+Sound/Voice/Example.esp/femalenord/examplequest_greeting_00000800_1.fuz,000800:Example.esp,1,femalenord
+Sound/Voice/Example.esp/maleguard/examplequest_silence_00000801_1.fuz,000801:Example.esp,1,maleguard

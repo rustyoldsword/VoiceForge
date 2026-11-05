@@ -1,0 +1,18 @@
+{
+  "maleguard": [
+    {
+      "file": "reference_01.wav",
+      "text": "Replace this with the exact words spoken in reference_01.wav."
+    },
+    {
+      "file": "reference_02.wav",
+      "text": "Replace this with the exact words spoken in reference_02.wav."
+    }
+  ],
+  "femalenord": [
+    {
+      "file": "reference_01.wav",
+      "text": "Replace this with the exact words spoken in reference_01.wav."
+    }
+  ]
+}
