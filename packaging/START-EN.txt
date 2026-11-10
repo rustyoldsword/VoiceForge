@@ -1,4 +1,4 @@
-VoiceForge 0.3.0 - Skyrim Voice Studio by Dwemer Mods (https://dwemermods.com)
+VoiceForge 0.3.1 - Skyrim Voice Studio by Dwemer Mods (https://dwemermods.com)
 
 Start: open VoiceForge.exe.
 Keep the _internal folder next to the EXE. No Python install is needed.

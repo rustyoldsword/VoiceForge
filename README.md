@@ -1,4 +1,4 @@
-# VoiceForge 0.3.0
+# VoiceForge 0.3.1
 
 A Windows desktop studio that voices Skyrim dialogue with Fish Audio: it takes your mod's lines, has Fish speak them in
 the voice you choose, and builds game-ready FUZ files (LIP lip-sync + XWM audio) at the exact paths the game reads.
@@ -95,6 +95,9 @@ See `licenses\`. Qt for Python (PySide6) is LGPLv3. The Atelier UI font is Inter
 License 1.1. Fish Audio is a third-party service with its own terms.
 
 ## Changes
+
+**0.3.1**
+- xEdit exporter: fixed "Undeclared Identifier 'IncludeTrailingPathDelimiter'" on start; it now runs in xEdit and writes the CSV files.
 
 **0.3.0** — first public release
 - Dwemer Atelier look: graphite surfaces, brass accent, Atelier UI font, Dwemer Mods logo and window icon.

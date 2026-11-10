@@ -7,7 +7,7 @@ begin
   Result := 0; ActiveExport := False;
   parent := SelectDirectory('FishAI - choose a folder for CSV export', '', ScriptsPath, nil);
   if parent = '' then begin Result := 1; Exit; end;
-  folder := IncludeTrailingPathDelimiter(parent) + 'VoiceForge-' + FormatDateTime('yyyymmdd-hhnnss', Now);
+  folder := IncludeTrailingBackslash(parent) + 'VoiceForge-' + FormatDateTime('yyyymmdd-hhnnss', Now);
   if DirectoryExists(folder) then begin
     AddMessage('Output directory already exists. Try again.'); Result := 1; Exit;
   end;

@@ -417,7 +417,7 @@ procedure StartExport(folder: string);
 var f, g, e: IInterface; i, j, k, flags: integer; s: string;
 begin
   InfoCount := 0; ResponseCount := 0; TargetCount := 0;
-  OutputDir := IncludeTrailingPathDelimiter(folder);
+  OutputDir := IncludeTrailingBackslash(folder);
   Lines := TStringList.Create; Paths := TStringList.Create; Issues := NewSet;
   Audit := TStringList.Create; LineKeys := NewSet; PathKeys := NewSet;
   Seen := NewSet; Voices := NewSet; Defaults := NewSet; Recursion := NewSet;
