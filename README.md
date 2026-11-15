@@ -70,9 +70,9 @@ library:
   to the creature's own voice folder, where the game looks for them; only the reference clips are borrowed.
 
 The dialog also has **Do not voice child voices (FemaleChild, MaleChild)**. The full breakdown is written to
-`voice-plan.txt` next to the export, your choices to `voice-substitutions.json` (offered again next time), and, when
-you mapped a creature, a small `voice-substitution-references\` folder with hard links to the library clips (your
-library itself is never changed).
+`voice-plan.txt` next to the export and your choices to `voice-substitutions.json` (offered again next time). The
+project itself only records which library voice each creature borrows and takes the clips from the library (the
+bundled `voices\` folder), so the export folder can be deleted once the project exists.
 
 ## xEdit exporter (experimental)
 
@@ -133,6 +133,11 @@ License 1.1. Fish Audio is a third-party service with its own terms.
   and every new project gets them. 0.4.0 created each project from an xEdit export with an empty tools folder, so the
   run stopped with "Missing tools". Opening such a project now fills them in from your settings.
 - The tools error says which folder was checked and points to Settings.
+- A project with talking creatures no longer depends on the xEdit export folder: it records which library voice each
+  creature borrows and takes the clips from the bundled `voices\` folder. In 0.4.0 the borrowed clips were copied into
+  the export folder, and deleting it stopped the run with "No such file ... ref_candidates.json". Projects made with
+  0.4.0 are converted when opened, as long as their export folder is still there.
+- A project made with the bundled library finds it next to VoiceForge.exe even after the program folder is moved.
 
 **0.4.0**
 - Vanilla voice library included: 440 reference clips with exact transcripts for the 126 vanilla voice types

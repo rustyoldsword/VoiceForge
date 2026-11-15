@@ -21,7 +21,7 @@ import msgpack
 from dotenv import dotenv_values
 
 from . import fuz_backend as fuz
-from .project import MODEL, Project, connection, contained, read_json, read_refs, relative, write_json
+from .project import MODEL, Project, connection, contained, project_refs, read_json, references_path, relative, write_json
 
 API = 'https://api.fish.audio/v1/tts'
 
@@ -79,14 +79,14 @@ class FishClient:
     def references(self, vt):
         with self.lock:
             if self.refs is None:
-                self.refs = read_refs(self.config.get('references'))
+                self.refs = project_refs(self.config)
             if vt in self.cache:
                 return self.cache[vt]
             candidates = self.refs.get(vt)
             if not candidates:
                 raise ValueError(f'No references for {vt}')
             result = []
-            root = Path(self.config['references']).parent / 'refs'
+            root = references_path(self.config).parent / 'refs'
             for candidate in candidates:
                 if self.stop.is_set():
                     raise Halt()
@@ -178,13 +178,14 @@ def preflight(project, jobs, mode):
         mode != 'samples' and all(fuz.target_ok(str(contained(project.root / 'output', t))) for t in j['targets']))]
     if pending:
         inline = [j for j in pending if not project.config.get('voice_ids', {}).get(j['vt'])]
-        if inline and not project.config.get('references'):
-            raise ValueError('Select ref_candidates.json in References')
-        refs = read_refs(project.config['references']) if inline else {}
+        if inline and not references_path(project.config).is_file():
+            raise ValueError(f'Reference library not found: {references_path(project.config)}. '
+                             'Choose ref_candidates.json in 03 Voice references')
+        refs = project_refs(project.config) if inline else {}
         absent = sorted({j['vt'] for j in inline if not refs.get(j['vt'])})
         if absent:
             raise ValueError('VoiceTypes without references: ' + ', '.join(absent))
-        root = Path(project.config.get('references') or '.').parent / 'refs'
+        root = references_path(project.config).parent / 'refs'
         for vt in {j['vt'] for j in inline}:
             for ref in refs[vt]:
                 path = contained(root, relative(ref.get('source_voice_type', vt)) + '/' + relative(ref['file']))

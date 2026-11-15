@@ -12,9 +12,7 @@ before the project is built:
 from __future__ import annotations
 
 import csv
-import os
 import re
-import shutil
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -23,7 +21,6 @@ from pathlib import Path
 from .project import create_project, jobs_from_csv, read_refs, relative, write_json
 
 SUBSTITUTIONS_FILE = 'voice-substitutions.json'
-SUBSTITUTION_REFS_DIR = 'voice-substitution-references'
 PLAN_REPORT = 'voice-plan.txt'
 CHILD_VOICES = {'femalechild', 'malechild'}
 STAGE_DIRECTIONS = re.compile(r'\([^)]*\)|\[[^\]]*\]|\*[^*]*\*|<[^>]*>')
@@ -127,41 +124,6 @@ def validate_reference_library(path: Path, needed: set[str]) -> tuple[int, list[
     return checked, missing
 
 
-def _link_or_copy(source: Path, target: Path) -> None:
-    if target.is_file() and target.stat().st_size == source.stat().st_size:
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
-        target.unlink()
-    try:
-        os.link(source, target)
-    except OSError:
-        shutil.copy2(source, target)
-
-
-def substitution_references(library: Path, needed: set[str], substitutions: dict[str, str], folder: Path) -> Path:
-    """A manifest with the needed library voices plus the mapped creature voices.
-
-    Reference audio is hard-linked from the library (copied across drives), so the shared library
-    itself is never modified.
-    """
-    refs = read_refs(library)
-    manifest = {}
-    for vt in sorted(needed):
-        donor = substitutions.get(vt, vt)
-        if donor not in refs:
-            raise ValueError(f'{vt}: substitute voice {donor} is not in the reference library')
-        clips = []
-        for clip in refs[donor]:
-            source_vt = relative(clip.get('source_voice_type', donor))
-            _link_or_copy(Path(library).parent / 'refs' / source_vt / relative(clip['file']),
-                          folder / 'refs' / source_vt / relative(clip['file']))
-            clips.append(dict(clip, source_voice_type=source_vt))
-        manifest[vt] = clips
-    write_json(folder / 'ref_candidates.json', manifest)
-    return folder / 'ref_candidates.json'
-
-
 def unused_project_path(parent: Path, stem: str) -> Path:
     base = Path(parent) / f'{stem}-Project'
     if not base.exists():
@@ -232,12 +194,13 @@ def prepare(export_dir, project_dir, references, name, *, substitutions=None, ch
     write_json(export_dir / 'jobs.json', jobs)
 
     needed = {job['vt'] for job in jobs}
-    if substitutions:
-        references = substitution_references(references, needed, substitutions, export_dir / SUBSTITUTION_REFS_DIR)
-    checked_clips, missing_voices = validate_reference_library(references, needed)
+    donors = {substitutions.get(vt, vt) for vt in needed}
+    checked_clips, missing_voices = validate_reference_library(references, donors)
     if missing_voices:
         raise ValueError('VoiceTypes without references: ' + ', '.join(missing_voices))
-    project = create_project(project_dir, name, jobs, references=str(references), skipped=skipped)
+    # Talking creatures only name the library voice they borrow: no copies, no link back to the export folder.
+    project = create_project(project_dir, name, jobs, references=str(references), skipped=skipped,
+                             borrowed=substitutions)
     result = {
         'project': str(project),
         'jobs_json': str(export_dir / 'jobs.json'),

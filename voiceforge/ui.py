@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QSplitter, QAbstractItemView, QCheckBox, QScrollArea)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, MACHINE_SETTINGS, share_machine_settings, create_project, read_json, read_refs, jobs_from_csv, write_json
+from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, MACHINE_SETTINGS, share_machine_settings, project_refs, references_path, create_project, read_json, read_refs, jobs_from_csv, write_json
 from .engine import Pipeline, verify, regenerate, legacy_snapshot
 from .xedit_import import (CHILD_VOICES, is_export_folder, load_plan, prepare as prepare_from_export,
     saved_substitutions, unused_project_path)
@@ -765,7 +765,7 @@ class Window(QMainWindow):
             (self.xwm_workers, 'xwm_workers'), (self.cpu_limit, 'cpu_limit'), (self.temp_limit, 'temp_limit'),
             (self.retries, 'auto_retries'), (self.padding, 'pad_min_duration')]:
             widget.setValue(project.config.get(key, 0))
-        self.reference_path.setText(project.config.get('references', ''))
+        self.reference_path.setText(str(references_path(project.config)))
         self.voice_type.clear()
         self.voice_type.addItems(sorted({j['vt'] for j in project.jobs}))
         self.show_references()
@@ -779,8 +779,8 @@ class Window(QMainWindow):
         if not self.project:
             return
         try:
-            path = self.project.config.get('references')
-            refs = read_refs(path)
+            refs = project_refs(self.project.config)
+            borrowed = self.project.config.get('borrowed_voices', {})
             needed = {j['vt'] for j in self.project.jobs}
             voice_ids = self.project.config.get('voice_ids', {})
             missing = sorted(needed - set(refs) - set(voice_ids))
@@ -790,7 +790,7 @@ class Window(QMainWindow):
                     rows.append(f'{vt}    Fish library voice: {voice_ids[vt]}\n')
                     continue
                 clips = refs.get(vt, [])
-                rows.append(f'{vt}    {len(clips)} reference clips')
+                rows.append(f'{vt}    {len(clips)} reference clips' + (f'  (voice of {borrowed[vt]})' if vt in borrowed else ''))
                 for clip in clips:
                     rows.append('    ' + clip['file'] + '\n    ' + clip.get('text', tr('(нет транскрипта)')))
                 rows.append('')

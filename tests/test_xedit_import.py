@@ -1,11 +1,15 @@
 """Project from an xEdit export: voice planning, creature substitution, child voices."""
 import csv
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
+from unittest.mock import patch
+
 from voiceforge import xedit_import as builder
+from voiceforge.project import Project, project_refs, references_path
 
 LINES = ['id', 'info_formid', 'response_number', 'needs_voice',
          'voice_text (stage directions removed)', 'subtitle_text (as in game unchanged)', 'export_notes']
@@ -96,11 +100,46 @@ class VoicePlanTests(unittest.TestCase):
         self.assertEqual(dog[0]['text'], 'The curse is broken.')
         self.assertEqual(dog[0]['targets'], ['Sound/Voice/Mod.esp/crdoghusky/q_t_00000002_1.fuz'])
         config = json.loads((project / 'project.json').read_text(encoding='utf-8'))
-        refs = json.loads(Path(config['references']).read_text(encoding='utf-8'))
+        self.assertEqual(config['borrowed_voices'], {'crdoghusky': 'malecommander'})
+        refs = project_refs(config)
         self.assertEqual(refs['crdoghusky'][0]['source_voice_type'], 'malecommander')
-        audio = Path(config['references']).parent / 'refs' / 'malecommander' / 'c.wav'
+        audio = references_path(config).parent / 'refs' / 'malecommander' / 'c.wav'
         self.assertTrue(audio.is_file())
         self.assertEqual(result['substitutions'], {'crdoghusky': 'malecommander'})
+
+    def test_project_survives_deleting_the_export_folder(self):
+        _, project = self.fx.build({'crdoghusky': 'malecommander'})
+        shutil.rmtree(self.fx.export)
+        config = json.loads((project / 'project.json').read_text(encoding='utf-8'))
+        self.assertFalse(str(self.fx.export) in json.dumps(config), 'project still points into the export folder')
+        refs = project_refs(config)
+        root = references_path(config).parent / 'refs'
+        for vt in ('maleguard', 'crdoghusky'):
+            for clip in refs[vt]:
+                self.assertTrue((root / clip.get('source_voice_type', vt) / clip['file']).is_file())
+
+    def test_bundled_library_is_not_pinned_to_one_program_folder(self):
+        with patch('voiceforge.project.bundled_references', return_value=self.fx.library / 'ref_candidates.json'):
+            _, project = self.fx.build({'crdoghusky': 'malecommander'})
+            config = json.loads((project / 'project.json').read_text(encoding='utf-8'))
+            self.assertEqual(config['references'], '')
+            self.assertEqual(references_path(config), self.fx.library / 'ref_candidates.json')
+
+    def test_project_of_040_with_copied_creature_clips_is_upgraded(self):
+        _, project = self.fx.build()
+        old = self.fx.export / 'voice-substitution-references'
+        manifest = {'maleguard': [dict(file='g.wav', text='Guard reference.', source_voice_type='maleguard')],
+                    'crdoghusky': [dict(file='c.wav', text='Commander reference.', source_voice_type='malecommander')]}
+        old.mkdir()
+        (old / 'ref_candidates.json').write_text(json.dumps(manifest), encoding='utf-8')
+        config = json.loads((project / 'project.json').read_text(encoding='utf-8'))
+        config['references'] = str(old / 'ref_candidates.json')
+        (project / 'project.json').write_text(json.dumps(config), encoding='utf-8')
+        with patch('voiceforge.project.bundled_references', return_value=self.fx.library / 'ref_candidates.json'):
+            Project(project)
+        config = json.loads((project / 'project.json').read_text(encoding='utf-8'))
+        self.assertEqual(config['references'], '')
+        self.assertEqual(config['borrowed_voices'], {'crdoghusky': 'malecommander'})
 
     def test_substitution_must_name_a_library_voice(self):
         with self.assertRaises(ValueError):

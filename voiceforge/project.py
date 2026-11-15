@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import sys
 import time
 from contextlib import contextmanager
 from functools import lru_cache
@@ -27,6 +28,50 @@ def read_refs(path):
             raise ValueError(f'Duplicate VoiceType in references: {vt}')
         refs[vt.lower()] = clips
     return refs
+
+
+def bundled_references():
+    """The vanilla library that ships next to VoiceForge.exe (voices\\ref_candidates.json)."""
+    home = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
+    return home / 'voices' / 'ref_candidates.json'
+
+
+def references_path(config):
+    """The project's own library, or the bundled one when the project names none."""
+    return Path(config['references']) if config.get('references') else bundled_references()
+
+
+def project_refs(config):
+    """References by VoiceType; a borrowed voice (a talking creature) uses its donor's clips from the same library."""
+    refs = read_refs(references_path(config))
+    for vt, donor in config.get('borrowed_voices', {}).items():
+        if donor in refs:
+            refs[vt] = [dict(clip, source_voice_type=clip.get('source_voice_type', donor)) for clip in refs[donor]]
+    return refs
+
+
+def upgrade_borrowed(config):
+    """0.4.0 copied the clips of talking creatures into <export>\\voice-substitution-references, so deleting the
+    export folder broke the project. Turn such a project into one that names the borrowed voices and uses the
+    bundled library. Returns True when config was changed."""
+    old = Path(config.get('references') or '')
+    if old.parent.name != 'voice-substitution-references' or not old.is_file() or not bundled_references().is_file():
+        return False
+    library = read_refs(bundled_references())
+    signature = {tuple((c.get('source_voice_type', vt), c['file']) for c in clips): vt for vt, clips in library.items()}
+    borrowed = {}
+    for vt, clips in read_refs(old).items():
+        if vt in library:
+            continue
+        donor = signature.get(tuple((c.get('source_voice_type', vt), Path(c['file']).with_suffix('.mp3').name)
+                                    for c in clips)) or signature.get(
+            tuple((c.get('source_voice_type', vt), c['file']) for c in clips))
+        if not donor:
+            return False  # a library the bundled one does not match: leave the project as it is
+        borrowed[vt] = donor
+    config['references'] = ''
+    config['borrowed_voices'] = borrowed
+    return True
 
 
 def write_json(path, value):
@@ -166,8 +211,11 @@ def share_machine_settings(config, remembered):
     return filled
 
 
-def create_project(root, name, jobs, *, references='', raw_source='', target_prefix='', skipped=None):
+def create_project(root, name, jobs, *, references='', raw_source='', target_prefix='', skipped=None, borrowed=None):
+    """borrowed: {voice type: library voice whose clips it uses}, for talking creatures."""
     root = Path(root).resolve()
+    if references and Path(references).resolve() == bundled_references().resolve():
+        references = ''  # the bundled library is found next to VoiceForge.exe wherever the program is moved
     if root.exists() and any(root.iterdir()):
         raise ValueError('Choose a new empty project directory')
     # Imported manifests are copied; source files and old outputs are never edited.
@@ -184,7 +232,7 @@ def create_project(root, name, jobs, *, references='', raw_source='', target_pre
     config = dict(version=1, name=name, model=MODEL, tools=DEFAULT_TOOLS, secret=DEFAULT_SECRET,
                   references=str(Path(references).resolve()) if references else '',
                   raw_source=str(Path(raw_source).resolve()) if raw_source else '',
-                  fish_workers=3, lip_workers=4, xwm_workers=4, cpu_limit=75, temp_limit=0,
+                  borrowed_voices=dict(borrowed or {}), fish_workers=3, lip_workers=4, xwm_workers=4, cpu_limit=75, temp_limit=0,
                   auto_retries=1, pad_min_duration=0.5, created=time.time(), manifest_sha256=manifest_hash(normalized))
     write_json(root / 'project.json', config)
     write_json(root / 'jobs.json', normalized)
@@ -204,6 +252,8 @@ class Project:
     def __init__(self, root):
         self.root = Path(root).resolve()
         self.config = read_json(self.root / 'project.json')
+        if upgrade_borrowed(self.config):
+            write_json(self.root / 'project.json', self.config)
         if self.config.get('model') != MODEL:
             raise ValueError('Only the explicitly selected free model is supported')
         for key, low, high in [('fish_workers', 1, 3), ('lip_workers', 1, 32), ('xwm_workers', 1, 32),
