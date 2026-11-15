@@ -171,7 +171,9 @@ def preflight(project, jobs, mode):
     required = ['ffmpeg.exe'] if mode == 'samples' else ['ffmpeg.exe', 'LipGenerator.exe', 'xWMAEncode.exe', 'FonixData.cdf']
     missing = [name for name in required if not (tools / name).is_file()]
     if missing:
-        raise ValueError('Missing tools: ' + ', '.join(missing))
+        if not project.config['tools']:
+            raise ValueError('Choose the tools folder (LipGenerator, xWMAEncode, ffmpeg) in 05 Settings and press Save settings')
+        raise ValueError(f"Missing in the tools folder {tools}: {', '.join(missing)}. Fix it in 05 Settings")
     pending = [j for j in jobs if not valid_wav(project.wav(j)) and not (
         mode != 'samples' and all(fuz.target_ok(str(contained(project.root / 'output', t))) for t in j['targets']))]
     if pending:

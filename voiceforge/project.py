@@ -148,6 +148,24 @@ def connection(project):
         db.close()
 
 
+MACHINE_SETTINGS = ('tools', 'secret')
+
+
+def share_machine_settings(config, remembered):
+    """The tools folder and the key file belong to the machine, not to one project.
+
+    An empty value in the project is filled from the remembered one; a value the project has is remembered when
+    nothing is remembered yet. Both dicts are changed in place; returns the keys filled into the project."""
+    filled = []
+    for key in MACHINE_SETTINGS:
+        if not config.get(key) and remembered.get(key):
+            config[key] = remembered[key]
+            filled.append(key)
+        elif config.get(key) and not remembered.get(key):
+            remembered[key] = config[key]
+    return filled
+
+
 def create_project(root, name, jobs, *, references='', raw_source='', target_prefix='', skipped=None):
     root = Path(root).resolve()
     if root.exists() and any(root.iterdir()):

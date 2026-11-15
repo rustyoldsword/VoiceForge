@@ -1,4 +1,4 @@
-# VoiceForge 0.4.0
+# VoiceForge 0.4.1
 
 A Windows desktop studio that voices Skyrim dialogue with Fish Audio: it takes your mod's lines, has Fish speak them in
 the voice you choose, and builds game-ready FUZ files (LIP lip-sync + XWM audio) at the exact paths the game reads.
@@ -40,7 +40,8 @@ Identical text for the same voice type is generated once and written to every pa
 ## Quick start
 
 1. Unpack the archive anywhere and run `VoiceForge.exe`. Keep the `_internal` folder next to it.
-2. **Settings**: choose the tools folder and your API key file, then **Save settings**.
+2. **Settings**: choose the tools folder and your API key file, then **Save settings**. This works before any
+   project exists, and every project you create or open later gets them too.
 3. **Drop the xEdit export folder** (`VoiceForge-YYYYMMDD-HHMMSS`, see below) onto the VoiceForge window or onto
    `VoiceForge.exe`, or press **From an xEdit export…**. The bundled vanilla library (`voices\`) is used
    automatically. Check the project dialog (name, child voices, voices for speaking creatures) and press
@@ -126,6 +127,12 @@ See `licenses\`. Qt for Python (PySide6) is LGPLv3. The Atelier UI font is Inter
 License 1.1. Fish Audio is a third-party service with its own terms.
 
 ## Changes
+
+**0.4.1**
+- The tools folder and the API key file are remembered: set them once in Settings (with or without a project open)
+  and every new project gets them. 0.4.0 created each project from an xEdit export with an empty tools folder, so the
+  run stopped with "Missing tools". Opening such a project now fills them in from your settings.
+- The tools error says which folder was checked and points to Settings.
 
 **0.4.0**
 - Vanilla voice library included: 440 reference clips with exact transcripts for the 126 vanilla voice types

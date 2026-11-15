@@ -129,6 +129,8 @@ EN = {
     'Открыть project.json': 'Open project.json',
     'Проект открыт: ': 'Project opened: ',
     'Открыт проект: ': 'Opened project: ',
+    'Папка инструментов и файл ключа взяты из сохранённых настроек (05 Настройки).':
+        'Tools folder and key file taken from your last settings (05 Settings).',
     '(нет транскрипта)': '(no transcript)',
     'Нужно голосов: {needed}. Без эталонов: {missing}.': 'Voices needed: {needed}. Without references: {missing}.',
     'Fish reference_id должен содержать 32 шестнадцатеричных символа.': 'A Fish reference_id must be 32 hexadecimal characters.',

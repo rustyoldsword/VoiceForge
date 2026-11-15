@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QSplitter, QAbstractItemView, QCheckBox, QScrollArea)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, create_project, read_json, read_refs, jobs_from_csv, write_json
+from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, MACHINE_SETTINGS, share_machine_settings, create_project, read_json, read_refs, jobs_from_csv, write_json
 from .engine import Pipeline, verify, regenerate, legacy_snapshot
 from .xedit_import import (CHILD_VOICES, is_export_folder, load_plan, prepare as prepare_from_export,
     saved_substitutions, unused_project_path)
@@ -582,8 +582,8 @@ class Window(QMainWindow):
         widget, layout = page(tr('Настройки проекта'), tr('Ограничения ресурсов, инструменты сборки и путь к ключу. Сам ключ не отображается и не копируется в проект.'))
         form = QFormLayout()
         self.name_edit = QLineEdit()
-        self.tools_edit = QLineEdit(DEFAULT_TOOLS)
-        self.secret_edit = QLineEdit(DEFAULT_SECRET)
+        self.tools_edit = QLineEdit(self.settings.value('tools', '') or DEFAULT_TOOLS)
+        self.secret_edit = QLineEdit(self.settings.value('secret', '') or DEFAULT_SECRET)
         form.addRow(tr('Название'), self.name_edit)
         for title, edit, folder in [(tr('Папка инструментов'), self.tools_edit, True), (tr('Файл с FISH_API_KEY'), self.secret_edit, False)]:
             row = QHBoxLayout()
@@ -748,6 +748,12 @@ class Window(QMainWindow):
 
     def project_loaded(self, project):
         self.project = project
+        remembered = {key: self.settings.value(key, '') for key in MACHINE_SETTINGS}
+        filled = share_machine_settings(project.config, remembered)
+        for key, value in remembered.items():
+            self.settings.setValue(key, value)
+        if filled:
+            project.save()
         self.project_title.setText(project.config['name'])
         self.model.load(project.jobs, project.statuses())
         self.baseline_done = project.counts().get('done', 0)
@@ -765,6 +771,8 @@ class Window(QMainWindow):
         self.show_references()
         self.settings.setValue('lastProject', str(project.root))
         self.add_log(tr('Открыт проект: ') + str(project.root))
+        if filled:
+            self.add_log(tr('Папка инструментов и файл ключа взяты из сохранённых настроек (05 Настройки).'))
         self.statusBar().showMessage(tr('Проект открыт: ') + project.config['name'])
 
     def show_references(self):
@@ -832,7 +840,13 @@ class Window(QMainWindow):
             edit.setText(value)
 
     def save_settings(self):
-        if not self.project or self.busy():
+        if self.busy():
+            return
+        # The tools folder and the key file are remembered even before the first project exists.
+        self.settings.setValue('tools', self.tools_edit.text())
+        self.settings.setValue('secret', self.secret_edit.text())
+        if not self.project:
+            self.add_log(tr('Настройки сохранены.'))
             return
         self.project.config.update(name=self.name_edit.text(), tools=self.tools_edit.text(), secret=self.secret_edit.text(),
             fish_workers=self.fish_workers.value(), lip_workers=self.lip_workers.value(), xwm_workers=self.xwm_workers.value(),
@@ -1037,8 +1051,9 @@ class Window(QMainWindow):
         self.trend.update()
         busy, opened = self.busy(), self.project is not None
         for control in (self.run_button, self.sample_button, self.build_button, self.verify_button, self.zip_button,
-                        self.selection_run, self.selection_sample, self.regen_button, self.save_button, self.ref_button, self.voice_save):
+                        self.selection_run, self.selection_sample, self.regen_button, self.ref_button, self.voice_save):
             control.setEnabled(opened and not busy)
+        self.save_button.setEnabled(not busy)
         self.pause_button.setEnabled(busy and self.pipeline is not None)
         self.stop_button.setEnabled(busy and self.pipeline is not None)
         if opened and not self.refresh_busy:

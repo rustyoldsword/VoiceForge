@@ -32,7 +32,7 @@ python-dotenv - BSD-3-Clause. https://github.com/theskumar/python-dotenv
 PyInstaller bootloader - GPLv2 with the bootloader exception. https://pyinstaller.org
 Atelier UI font - Inter 4.1 renamed, SIL Open Font License 1.1 (AtelierUI-font-OFL.txt).
 
-voices\ holds short clips of the vanilla Skyrim Special Edition voice types (Bethesda Game Studios), used only as
+voices\\ holds short clips of the vanilla Skyrim Special Edition voice types (Bethesda Game Studios), used only as
 cloning references for Fish Audio, each with its exact transcript.
 
 Not included and not affiliated: Fish Audio (online service, its own terms), LipGenerator and xWMAEncode
@@ -50,7 +50,7 @@ def md5(path):
 
 
 def bundle_voices(out):
-    """voices\ref_candidates.json + voices\refs\<vt>\*.mp3 from the local WAV library; converted files are cached."""
+    r"""voices\ref_candidates.json + voices\refs\<vt>\*.mp3 from the local WAV library; converted files are cached."""
     source = Path(json.loads(LOCAL_CONFIG.read_text(encoding='utf-8-sig'))['references'])
     library = json.loads(source.read_text(encoding='utf-8-sig'))
     target = out / 'voices'

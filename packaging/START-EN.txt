@@ -1,4 +1,4 @@
-VoiceForge 0.4.0 - Skyrim Voice Studio by Dwemer Mods (https://dwemermods.com)
+VoiceForge 0.4.1 - Skyrim Voice Studio by Dwemer Mods (https://dwemermods.com)
 
 Start: open VoiceForge.exe.
 Keep the _internal folder next to the EXE. No Python install is needed.
@@ -7,7 +7,7 @@ Interface language: Settings -> Interface language (applies after a restart).
 First project:
 1. Settings: choose the tools folder (LipGenerator.exe, xWMAEncode.exe, ffmpeg.exe and
    FonixData.cdf) and your local file with FISH_API_KEY, or set the environment variable.
-   Save the settings.
+   Save the settings (no project is needed; every project gets them).
 2. Export the dialogue with the xEdit script from xEdit Scripts\ (it writes a VoiceForge-... folder).
 3. Drop that folder onto the VoiceForge window or onto VoiceForge.exe (or press "From an xEdit export...").
    The vanilla voice library in voices\ is used automatically.
