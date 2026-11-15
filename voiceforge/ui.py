@@ -16,11 +16,13 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QLabel, QPushButton, QListWidget, QStackedWidget, QFrame, QGridLayout, QProgressBar,
     QTableView, QHeaderView, QLineEdit, QPlainTextEdit, QFileDialog, QMessageBox,
     QFormLayout, QSpinBox, QDoubleSpinBox, QDialog, QDialogButtonBox, QComboBox,
-    QSplitter, QAbstractItemView, QCheckBox)
+    QSplitter, QAbstractItemView, QCheckBox, QScrollArea)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
 from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, create_project, read_json, read_refs, jobs_from_csv, write_json
 from .engine import Pipeline, verify, regenerate, legacy_snapshot
+from .xedit_import import (CHILD_VOICES, is_export_folder, load_plan, prepare as prepare_from_export,
+    saved_substitutions, unused_project_path)
 from .i18n import LANG, LANGUAGES, save_language, tr
 from . import __version__
 
@@ -202,6 +204,9 @@ class ImportDialog(QDialog):
         self.kind.addItems([tr('Пара CSV'), 'jobs.json'])
         self.first, self.second = QLineEdit(), QLineEdit()
         self.refs, self.raw = QLineEdit(), QLineEdit()
+        self.bundled = Path(home) / 'voices' / 'ref_candidates.json'
+        if self.bundled.is_file():  # the vanilla voice library shipped with VoiceForge
+            self.refs.setText(str(self.bundled))
         self.prefix = QLineEdit()
         self.prefix.setPlaceholderText(tr('Для относительных targets: Sound/Voice/Plugin.esp'))
         self.folder = QLineEdit(str(home / 'projects' / time.strftime('Project-%Y%m%d-%H%M%S')))
@@ -237,7 +242,7 @@ class ImportDialog(QDialog):
 
     def suggest(self, text):
         parent = Path(text).parent
-        if (parent / 'ref_candidates.json').is_file() and not self.refs.text():
+        if (parent / 'ref_candidates.json').is_file() and self.refs.text() in ('', str(self.bundled)):
             self.refs.setText(str(parent / 'ref_candidates.json'))
         if (parent / 'wav_raw').is_dir() and not self.raw.text():
             self.raw.setText(str(parent / 'wav_raw'))
@@ -281,6 +286,77 @@ class ImportDialog(QDialog):
         super().reject()
 
 
+class XEditProjectDialog(QDialog):
+    """Confirms a project from an xEdit export: name, child voices, voices for speaking creatures."""
+
+    def __init__(self, parent, folder, plan, available, previous):
+        super().__init__(parent)
+        self.setWindowTitle(tr('Проект из выгрузки xEdit'))
+        self.resize(980, 640 if plan.speaking else 360)
+        self.plan, self.selectors = plan, {}
+        layout = QVBoxLayout(self)
+        layout.addWidget(label(tr('Проект из выгрузки xEdit'), 'title'))
+        where = label(str(folder), 'muted')
+        where.setWordWrap(True)
+        layout.addWidget(where)
+        form = QFormLayout()
+        self.name = QLineEdit(Path(folder).name)
+        form.addRow(tr('Название'), self.name)
+        layout.addLayout(form)
+        dropped = len((set(plan.noise) | set(plan.silent)) - set(plan.speaking))
+        summary = label(tr('Голосов без эталонов пропущено: {dropped}. Они попали в выгрузку только из широких условий (например, «любой мужчина») или не говорят ничего, кроме лая и рыка. Полный разбор будет в voice-plan.txt рядом с выгрузкой.', dropped=dropped), 'muted')
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        self.children = QCheckBox(tr('Не озвучивать детские голоса (FemaleChild, MaleChild)'))
+        layout.addWidget(self.children)
+        if plan.speaking:
+            info = label(tr('Эти голоса без эталона действительно говорят. Выберите голос из библиотеки, с которого клонировать. Файлы FUZ остаются в папке исходного голоса, заимствуется только эталон.'), 'muted')
+            info.setWordWrap(True)
+            layout.addWidget(info)
+            body = QHBoxLayout()
+            rows = QWidget()
+            grid = QGridLayout(rows)
+            grid.setContentsMargins(0, 0, 0, 0)
+            values = [tr('— не озвучивать —')] + sorted(available - CHILD_VOICES)
+            for row, vt in enumerate(sorted(plan.speaking)):
+                grid.addWidget(button(f'{vt}  ({len(plan.speaking[vt])})', lambda checked=False, v=vt: self.show_lines(v)), row, 0)
+                box = QComboBox()
+                box.addItems(values)
+                if previous.get(vt) in values:
+                    box.setCurrentText(previous[vt])
+                box.currentIndexChanged.connect(lambda _index, v=vt: self.show_lines(v))
+                grid.addWidget(box, row, 1)
+                self.selectors[vt] = box
+            grid.setRowStretch(len(plan.speaking), 1)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(rows)
+            body.addWidget(scroll, 1)
+            self.lines = QPlainTextEdit()
+            self.lines.setObjectName('log')
+            self.lines.setReadOnly(True)
+            body.addWidget(self.lines, 1)
+            layout.addLayout(body, 1)
+            self.show_lines(sorted(plan.speaking)[0])
+        else:
+            layout.addStretch(1)
+        controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        ok = controls.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setText(tr('Создать проект'))
+        ok.setObjectName('primary')
+        controls.accepted.connect(self.accept)
+        controls.rejected.connect(self.reject)
+        layout.addWidget(controls)
+
+    def show_lines(self, vt):
+        lines = self.plan.speaking[vt]
+        self.lines.setPlainText(vt + ': ' + tr('реплик {count}', count=len(lines)) + '\n\n'
+                                + '\n'.join('- ' + line.text for line in lines))
+
+    def substitutions(self):
+        return {vt: box.currentText() for vt, box in self.selectors.items() if box.currentIndex() > 0}
+
+
 class Window(QMainWindow):
     def __init__(self, home):
         super().__init__()
@@ -294,6 +370,7 @@ class Window(QMainWindow):
         self.setWindowIcon(QIcon(str(ASSETS / 'icon.ico')))
         self.resize(1440, 930)
         self.setMinimumSize(1100, 760)
+        self.setAcceptDrops(True)
         root = QWidget()
         self.setCentralWidget(root)
         body = QHBoxLayout(root)
@@ -325,6 +402,7 @@ class Window(QMainWindow):
         self.nav.addItems([tr('01   Обзор'), tr('02   Очередь реплик'), tr('03   Эталоны голосов'), tr('04   Мониторинг'), tr('05   Настройки')])
         rail_box.addWidget(self.nav, 1)
         rail_box.addWidget(button(tr('+ Новый проект'), self.new_project, True))
+        rail_box.addWidget(button(tr('Из выгрузки xEdit…'), self.choose_export))
         rail_box.addWidget(button(tr('Открыть проект'), self.open_dialog))
         rail_box.addSpacing(16)
         rail_box.addWidget(label('ENGINE  Fish Audio\nMODEL   s2.1-pro-free\nBUILD   ' + __version__, 'engine'))
@@ -356,6 +434,15 @@ class Window(QMainWindow):
         widget, layout = page(tr('Производство озвучки'), tr('От реплик и эталонов до проверенного Skyrim FUZ — в одном локальном приложении.'))
         self.project_title = label(tr('Проект не открыт'), 'project')
         layout.addWidget(self.project_title)
+        drop = QFrame()
+        drop.setObjectName('card')
+        drop_box = QHBoxLayout(drop)
+        drop_box.setContentsMargins(18, 12, 18, 12)
+        drop_text = label(tr('Перетащите сюда папку выгрузки xEdit (VoiceForge-…) — проект создастся сам. Её можно перетащить и на значок VoiceForge.exe.'), 'muted')
+        drop_text.setWordWrap(True)
+        drop_box.addWidget(drop_text, 1)
+        drop_box.addWidget(button(tr('Выбрать папку…'), self.choose_export))
+        layout.addWidget(drop)
         grid = QGridLayout()
         self.metrics = {}
         for col, (key, title) in enumerate([('jobs', tr('УНИКАЛЬНЫХ РЕПЛИК')), ('done', tr('ГОТОВО FUZ-ЗАДАНИЙ')), ('failed', tr('ОШИБОК')), ('rate', tr('ЗАДАНИЙ / МИН'))]):
@@ -566,6 +653,83 @@ class Window(QMainWindow):
         if dialog.exec() and dialog.result_project:
             self.load_project(dialog.result_project)
 
+    def dragEnterEvent(self, event):
+        if any(url.isLocalFile() and is_export_folder(url.toLocalFile()) for url in event.mimeData().urls()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            if url.isLocalFile() and is_export_folder(url.toLocalFile()):
+                event.acceptProposedAction()
+                QTimer.singleShot(0, lambda path=url.toLocalFile(): self.new_from_export(path))
+                return
+
+    def choose_export(self):
+        if self.busy():
+            return
+        folder = QFileDialog.getExistingDirectory(self, tr('Папка выгрузки xEdit (lines.csv + paths.csv)'))
+        if folder:
+            self.new_from_export(folder)
+
+    def export_references(self, folder):
+        """ref_candidates.json next to the export, else the library chosen in VoiceForge, else the bundled one."""
+        own = Path(folder) / 'ref_candidates.json'
+        if own.is_file():
+            return own
+        last = self.settings.value('references', '')
+        if last and Path(last).is_file():
+            return Path(last)
+        bundled = self.home / 'voices' / 'ref_candidates.json'
+        if bundled.is_file():
+            return bundled
+        QMessageBox.information(self, 'VoiceForge', tr('Выберите ref_candidates.json вашей библиотеки эталонов (рядом с ним должна лежать папка refs). VoiceForge запомнит выбор.'))
+        path = QFileDialog.getOpenFileName(self, 'ref_candidates.json', '', 'JSON (*.json)')[0]
+        if not path:
+            return None
+        self.settings.setValue('references', path)
+        return Path(path)
+
+    def new_from_export(self, folder):
+        if self.busy():
+            return
+        folder = Path(folder)
+        if not is_export_folder(folder):
+            self.error(tr('В папке нет lines.csv и paths.csv из выгрузки xEdit: ') + str(folder))
+            return
+        refs = self.export_references(folder)
+        if not refs:
+            return
+        self.add_log(tr('Разбор выгрузки xEdit: ') + str(folder))
+        self.statusBar().showMessage(tr('Разбор выгрузки xEdit…'))
+        self.task = TaskThread(lambda emit: load_plan(folder, refs))
+        self.task.result.connect(lambda result: self.export_planned(folder, refs, *result))
+        self.task.problem.connect(self.error)
+        self.task.start()
+
+    def export_planned(self, folder, refs, plan, available):
+        dialog = XEditProjectDialog(self, folder, plan, available, saved_substitutions(folder))
+        if not dialog.exec():
+            self.statusBar().showMessage(tr('Создание проекта отменено.'))
+            return
+        name = dialog.name.text().strip() or folder.name
+        substitutions = dialog.substitutions()
+        child = 'exclude' if dialog.children.isChecked() else 'keep'
+        root = unused_project_path(folder.parent, folder.name)
+        self.statusBar().showMessage(tr('Создание проекта…'))
+        self.task = TaskThread(lambda emit: prepare_from_export(folder, root, refs, name, substitutions=substitutions,
+                                                                child_voices=child, plan=plan))
+        self.task.result.connect(self.export_project_created)
+        self.task.problem.connect(self.error)
+        self.task.start()
+
+    def export_project_created(self, result):
+        self.add_log(tr('Проект создан: заданий {jobs:,}, файлов FUZ {targets:,}, голосов {voices}. Разбор голосов: {plan}',
+                        jobs=result['jobs'], targets=result['targets'], voices=result['voice_types'], plan=result['voice_plan']))
+        if result['unvoiced_speaking_voice_types']:
+            self.add_log(tr('Без голоса оставлены говорящие существа: ') + ', '.join(
+                f'{vt} ({n})' for vt, n in result['unvoiced_speaking_voice_types'].items()))
+        QTimer.singleShot(0, lambda: self.load_project(result['project']))
+
     def open_dialog(self):
         if self.busy():
             return
@@ -635,6 +799,7 @@ class Window(QMainWindow):
         if path:
             self.reference_path.setText(path)
             self.project.config['references'] = path
+            self.settings.setValue('references', path)
             self.project.save()
             self.show_references()
 
@@ -967,8 +1132,11 @@ def run(home):
     window = Window(home)
     window.show()
     dark_title_bar(window)
+    folders = [arg for arg in sys.argv[1:] if not arg.startswith('--') and is_export_folder(arg)]
     if '--project' in sys.argv:
         window.load_project(sys.argv[sys.argv.index('--project') + 1])
+    elif folders:  # an export folder dropped onto VoiceForge.exe
+        QTimer.singleShot(0, lambda: window.new_from_export(folders[0]))
     elif '--smoke-test' not in sys.argv and window.settings.value('lastProject'):
         path = Path(window.settings.value('lastProject'))
         if (path / 'project.json').is_file():

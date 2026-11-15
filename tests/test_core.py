@@ -49,6 +49,11 @@ class CoreTests(unittest.TestCase):
         for value in ('../bad.fuz', 'C:\\bad.fuz', '/bad.fuz', 'a/../x', 'a//x', 'a:b/x'):
             with self.assertRaises(ValueError):
                 relative(value)
+        inside = contained(self.root, 'Sound/Voice/x.fuz')
+        self.assertTrue(inside.is_relative_to(self.root.resolve()))
+        for value in ('../bad.fuz', 'a/../../x', 'C:/bad.fuz'):
+            with self.assertRaises(ValueError):
+                contained(self.root, value)
         duplicate = job()
         duplicate['id'] = 'another'
         with self.assertRaises(ValueError):

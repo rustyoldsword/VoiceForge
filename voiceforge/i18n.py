@@ -159,6 +159,31 @@ EN = {
         '{done:,} / {total:,} jobs • {paths:,} game paths • WAVs ready: {wav:,} • Running: {running}',
     ' • Осталось ≈ {eta:.0f} мин': ' • About {eta:.0f} min left',
     'Завершение текущих операций. Закройте окно после остановки.': 'Finishing current operations. Close the window after it stops.',
+    # project from an xEdit export folder
+    'Проект из выгрузки xEdit': 'Project from an xEdit export',
+    'Из выгрузки xEdit…': 'From an xEdit export…',
+    'Выбрать папку…': 'Choose folder…',
+    'Перетащите сюда папку выгрузки xEdit (VoiceForge-…) — проект создастся сам. Её можно перетащить и на значок VoiceForge.exe.':
+        'Drop an xEdit export folder (VoiceForge-…) here and the project is created for you. You can also drop it onto VoiceForge.exe.',
+    'Папка выгрузки xEdit (lines.csv + paths.csv)': 'xEdit export folder (lines.csv + paths.csv)',
+    'Выберите ref_candidates.json вашей библиотеки эталонов (рядом с ним должна лежать папка refs). VoiceForge запомнит выбор.':
+        'Choose the ref_candidates.json of your reference library (its refs folder must sit next to it). VoiceForge remembers the choice.',
+    'В папке нет lines.csv и paths.csv из выгрузки xEdit: ': 'The folder has no lines.csv and paths.csv from an xEdit export: ',
+    'Разбор выгрузки xEdit: ': 'Reading the xEdit export: ',
+    'Разбор выгрузки xEdit…': 'Reading the xEdit export…',
+    'Создание проекта отменено.': 'Project creation cancelled.',
+    'Создание проекта…': 'Creating the project…',
+    'Проект создан: заданий {jobs:,}, файлов FUZ {targets:,}, голосов {voices}. Разбор голосов: {plan}':
+        'Project created: {jobs:,} jobs, {targets:,} FUZ files, {voices} voices. Voice plan: {plan}',
+    'Без голоса оставлены говорящие существа: ': 'Speaking creatures left without a voice: ',
+    'Голосов без эталонов пропущено: {dropped}. Они попали в выгрузку только из широких условий (например, «любой мужчина») или не говорят ничего, кроме лая и рыка. Полный разбор будет в voice-plan.txt рядом с выгрузкой.':
+        'Voices without references skipped: {dropped}. They are in the export only through broad conditions (for example "any male") or say nothing but barks and growls. The full breakdown is written to voice-plan.txt next to the export.',
+    'Не озвучивать детские голоса (FemaleChild, MaleChild)': 'Do not voice child voices (FemaleChild, MaleChild)',
+    'Эти голоса без эталона действительно говорят. Выберите голос из библиотеки, с которого клонировать. Файлы FUZ остаются в папке исходного голоса, заимствуется только эталон.':
+        'These voices have no reference but really speak. Pick a library voice to clone from. The FUZ files stay in the original voice folder; only the reference is borrowed.',
+    '— не озвучивать —': '— do not voice —',
+    'реплик {count}': '{count} lines',
+    'Создать проект': 'Create project',
 }
 
 

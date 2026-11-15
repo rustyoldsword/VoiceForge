@@ -17,8 +17,8 @@ its own.
 2. Select the **whole plugin** on the left, right-click → **Apply Script** → *FishAI - Export VoiceForge CSV* → OK.
 3. Pick an output folder. The script creates a new `VoiceForge-YYYYMMDD-HHMMSS` folder inside it and never
    overwrites an earlier export.
-4. Read `EXPORT-REPORT.txt` and `review.csv` first. Then in VoiceForge: **+ New project** → choose `lines.csv` and
-   `paths.csv` from that folder, and a separate new folder for the project itself.
+4. Read `EXPORT-REPORT.txt` and `review.csv` first. Then drop that `VoiceForge-...` folder onto the VoiceForge window
+   or onto `VoiceForge.exe` (VoiceForge 0.4.0 or newer): the project is created next to it.
 
 Selecting dialogue topics or single INFO records limits the export to them. Selecting one quest does not select its
 INFO records; for a first export select the whole plugin.
@@ -40,7 +40,9 @@ same Quest/Topic shortening as xEdit's own `Export dialogues.pas`. Topics withou
 
 Explicit speakers, positive GetIsID / GetIsVoiceType, part of the race / class / faction / sex filters, INFO and quest
 dialogue conditions with AND/OR groups, static quest aliases and scene actors are used; form lists and the Use Traits
-template flag are followed. **All voice types are included, children too**, under the same conditions as the others.
+template flag are followed. Voice types come **only from the selected plugin and its masters**, so the result does not
+depend on which other mods are loaded (another mod's follower voice never ends up in it). Child voice types are
+included under the same conditions as the others; VoiceForge can skip them when it creates the project.
 
 This is a projection of conditions onto voice types, not a game simulator: an intersection of two voice sets can be
 wider than the NPCs that really meet both conditions. Shared lines without a clear speaker use voice types that allow

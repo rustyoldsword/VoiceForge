@@ -3,6 +3,7 @@
 # Rerunnable: dist/VoiceForge is rebuilt by PyInstaller each time; the zip is rewritten.
 # Run from the project root: .venv/Scripts/python.exe tools/build_release.py
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -31,13 +32,51 @@ python-dotenv - BSD-3-Clause. https://github.com/theskumar/python-dotenv
 PyInstaller bootloader - GPLv2 with the bootloader exception. https://pyinstaller.org
 Atelier UI font - Inter 4.1 renamed, SIL Open Font License 1.1 (AtelierUI-font-OFL.txt).
 
+voices\ holds short clips of the vanilla Skyrim Special Edition voice types (Bethesda Game Studios), used only as
+cloning references for Fish Audio, each with its exact transcript.
+
 Not included and not affiliated: Fish Audio (online service, its own terms), LipGenerator and xWMAEncode
-(Bethesda Creation Kit tools), ffmpeg, game audio.
+(Bethesda Creation Kit tools), ffmpeg.
 '''
+
+# The bundled reference library: the maintainer's verified library (ref_candidates.json + refs\, WAV) converted to
+# MP3 192 kbps. The engine re-encodes every reference to MP3 128 kbps before sending it, so nothing is lost.
+LOCAL_CONFIG = ROOT / 'tools' / 'voiceforge-project.local.json'
+VOICE_CACHE = ROOT / 'build' / 'voices-mp3'
 
 
 def md5(path):
     return hashlib.md5(Path(path).read_bytes()).hexdigest().upper()
+
+
+def bundle_voices(out):
+    """voices\ref_candidates.json + voices\refs\<vt>\*.mp3 from the local WAV library; converted files are cached."""
+    source = Path(json.loads(LOCAL_CONFIG.read_text(encoding='utf-8-sig'))['references'])
+    library = json.loads(source.read_text(encoding='utf-8-sig'))
+    target = out / 'voices'
+    manifest = {}
+    for vt, clips in sorted(library.items()):
+        entries = []
+        for clip in clips:
+            folder = clip.get('source_voice_type', vt)
+            wav = source.parent / 'refs' / folder / clip['file']
+            name = Path(clip['file']).with_suffix('.mp3').name
+            cached = VOICE_CACHE / folder / name
+            if not cached.is_file() or cached.stat().st_mtime < wav.stat().st_mtime:
+                cached.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(wav), '-b:a', '192k', str(cached)], check=True)
+            dest = target / 'refs' / folder / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(cached, dest)
+            entry = {k: v for k, v in clip.items() if k in ('file', 'text', 'formid', 'response', 'seconds',
+                                                              'source_voice_type')}
+            entry['file'] = name
+            entries.append(entry)
+        manifest[vt] = entries
+    (target / 'ref_candidates.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding='utf-8')
+    files = list((target / 'refs').rglob('*.mp3'))
+    print(f'voices: {len(manifest)} voice types, {sum(map(len, manifest.values()))} entries, {len(files)} MP3, '
+          f'{sum(f.stat().st_size for f in files) / 1e6:.1f} MB')
 
 
 def main():
@@ -54,6 +93,7 @@ def main():
         shutil.copyfile(XEDIT_SOURCE / name, xedit / name)
     for name in ('README.md', 'README-RU.md'):
         shutil.copyfile(ROOT / 'packaging' / 'xedit' / name, xedit / name)
+    bundle_voices(out)
     lic = out / 'licenses'
     lic.mkdir(exist_ok=True)
     shutil.copyfile(ROOT / 'voiceforge' / 'assets' / 'font' / 'OFL.txt', lic / 'AtelierUI-font-OFL.txt')

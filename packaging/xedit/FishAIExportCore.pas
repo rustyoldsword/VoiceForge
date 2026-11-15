@@ -3,10 +3,19 @@
 // Read-only xEdit exporter. Original filename truncation follows xEdit's
 // bundled Export dialogues.pas. No plugins are changed and no network is used.
 var
-  Lines, Paths, Issues, Audit, LineKeys, PathKeys, Seen, Voices, Defaults: TStringList;
+  Lines, Paths, Issues, Audit, LineKeys, PathKeys, PathOwners, Seen, Voices, Defaults: TStringList;
+  // Lookup lists are sorted: IndexOf on a sorted TStringList is a binary search,
+  // whereas IndexOfName/Values always scan every entry (that made the export of
+  // a large plugin quadratic in the number of target paths).
+  VoiceCache, QuestConditionCache, QuestUncertainCache: TStringList;
+  // Voice types come only from the selected plugins and their masters: a plugin
+  // cannot be voiced for a voice type it does not know (e.g. another mod's follower).
+  VoiceFiles: TStringList;
   Recursion: TStringList;
   OutputDir: string;
   InfoCount, ResponseCount, TargetCount: integer;
+  VoiceCacheHits, VoiceCacheMisses: integer;
+  ExportStarted: TDateTime;
   VoiceUncertain: boolean;
 
 function NewSet: TStringList;
@@ -48,6 +57,70 @@ end;
 function SameSet(a, b: TStringList): boolean;
 begin
   Result := a.Text = b.Text;
+end;
+
+// A set cache is a sorted list of keys; each key owns a copy of its set as its object.
+function LoadSetCache(cache: TStringList; key: string; dest: TStringList): boolean;
+var idx: integer;
+begin
+  idx := cache.IndexOf(key);
+  Result := idx >= 0;
+  if Result then dest.AddStrings(cache.Objects[idx]);
+end;
+
+procedure StoreSetCache(cache: TStringList; key: string; values: TStringList);
+var stored: TStringList;
+begin
+  stored := NewSet;
+  stored.AddStrings(values);
+  cache.AddObject(key, stored);
+end;
+
+procedure ClearSetCache(cache: TStringList);
+var i: integer;
+begin
+  for i := 0 to Pred(cache.Count) do
+    cache.Objects[i].Free;
+  cache.Clear;
+end;
+
+procedure FreeSetCache(cache: TStringList);
+begin
+  ClearSetCache(cache);
+  cache.Free;
+end;
+
+procedure AllowVoiceFile(f: IInterface);
+var i: integer; s: string;
+begin
+  s := LowerCase(GetFileName(f));
+  if VoiceFiles.IndexOf(s) >= 0 then Exit;
+  VoiceFiles.Add(s);
+  for i := 0 to Pred(MasterCount(f)) do
+    AllowVoiceFile(MasterByIndex(f, i));
+end;
+
+// Rebuilds the voice universe from VoiceFiles. Cached voice sets depend on it.
+procedure BuildVoiceUniverse;
+var f, g, e: IInterface; i, j, flags: integer; s: string;
+begin
+  Voices.Clear; Defaults.Clear;
+  ClearSetCache(VoiceCache); ClearSetCache(QuestConditionCache); QuestUncertainCache.Clear;
+  for i := 0 to Pred(FileCount) do begin
+    f := FileByIndex(i); g := GroupBySignature(f, 'VTYP');
+    for j := 0 to Pred(ElementCount(g)) do begin
+      e := ElementByIndex(g, j);
+      if VoiceFiles.IndexOf(LowerCase(GetFileName(GetFile(MasterOrSelf(e))))) < 0 then Continue;
+      e := WinningOverride(e);
+      s := LowerCase(EditorID(e));
+      if GetIsDeleted(e) or (s = '') then Continue;
+      Voices.AddObject(s, e);
+      flags := GetElementNativeValues(e, 'DNAM');
+      if (flags and 1) <> 0 then Defaults.Add(s);
+    end;
+  end;
+  AddMessage('FishAI: voice types ' + IntToStr(Voices.Count) + ', default dialogue ' +
+    IntToStr(Defaults.Count) + ', from ' + VoiceFiles.CommaText);
 end;
 
 procedure Issue(info: IInterface; n: integer; kind, detail: string);
@@ -99,9 +172,24 @@ begin
 end;
 
 procedure GetVoices(e: IInterface; dest: TStringList);
+var key: string; resolved: TStringList;
 begin
-  Recursion.Clear;
-  RecordVoices(e, dest, 0);
+  if not Assigned(e) then Exit;
+  e := WinningOverride(e);
+  key := StableKey(e);
+  resolved := NewSet;
+  try
+    if LoadSetCache(VoiceCache, key, resolved) then begin
+      Inc(VoiceCacheHits);
+      dest.AddStrings(resolved);
+      Exit;
+    end;
+    Inc(VoiceCacheMisses);
+    Recursion.Clear;
+    RecordVoices(e, resolved, 0);
+    StoreSetCache(VoiceCache, key, resolved);
+    dest.AddStrings(resolved);
+  finally resolved.Free; end;
 end;
 
 // xEdit resolves functions declared later in the unit (as in its bundled exporter).
@@ -215,13 +303,26 @@ end;
 procedure InfoVoices(info: IInterface; dest: TStringList; var method: string);
 var topic, quest, e, scene, actions, action: IInterface;
     qset, tmp, actors: TStringList; i, j: integer; isScene: boolean;
+    questKey: string; infoUncertain, questUncertain: boolean;
 begin
   topic := Link(info, 'Topic');
   quest := Link(topic, 'QNAM');
   qset := NewSet; tmp := NewSet; actors := NewSet;
   try
     ConditionsVoices(ElementByPath(info, 'Conditions'), quest, info, dest, 0);
-    ConditionsVoices(ElementByPath(quest, 'Quest Dialogue Conditions\Conditions'), quest, info, qset, 0);
+    infoUncertain := VoiceUncertain;
+    questKey := StableKey(quest);
+    if LoadSetCache(QuestConditionCache, questKey, qset) then begin
+      questUncertain := QuestUncertainCache.IndexOf(questKey) >= 0;
+      VoiceUncertain := infoUncertain or questUncertain;
+    end else begin
+      VoiceUncertain := False;
+      ConditionsVoices(ElementByPath(quest, 'Quest Dialogue Conditions\Conditions'), quest, info, qset, 0);
+      questUncertain := VoiceUncertain;
+      StoreSetCache(QuestConditionCache, questKey, qset);
+      if questUncertain then QuestUncertainCache.Add(questKey);
+      VoiceUncertain := infoUncertain or questUncertain;
+    end;
     Intersect(dest, qset);
     e := Link(info, 'ANAM');
     if Assigned(e) then begin
@@ -324,6 +425,10 @@ var source, topic, quest, responses, response, nextInfo, m: IInterface;
     key, rowkey, text, voiceText, needs, fileName, target, method, plugin, notes: string;
 begin
   if Signature(info) <> 'INFO' then Exit;
+  if VoiceFiles.IndexOf(LowerCase(GetFileName(GetFile(info)))) < 0 then begin
+    AllowVoiceFile(GetFile(info));
+    BuildVoiceUniverse;
+  end;
   key := StableKey(info);
   if Seen.IndexOf(key) >= 0 then Exit;
   Seen.Add(key);
@@ -332,6 +437,10 @@ begin
   info := WinningOverride(info);
   if GetIsDeleted(info) then Exit;
   Inc(InfoCount);
+  if (InfoCount mod 50) = 0 then
+    AddMessage('FishAI progress: INFO=' + IntToStr(InfoCount) +
+      ', responses=' + IntToStr(ResponseCount) + ', targets=' + IntToStr(TargetCount) +
+      ', elapsed=' + FormatDateTime('hh:nn:ss', Now - ExportStarted));
   source := info;
   visited := NewSet;
   try
@@ -398,13 +507,13 @@ begin
       fileName := VoiceFileName(EditorID(quest), EditorID(topic), source, n);
       for v := 0 to Pred(setVoice.Count) do begin
         target := 'Sound/Voice/' + plugin + '/' + setVoice[v] + '/' + fileName;
-        idx := PathKeys.IndexOfName(LowerCase(target));
-        if idx >= 0 then begin
-          if PathKeys.ValueFromIndex[idx] <> rowkey then
+        if PathKeys.IndexOf(LowerCase(target)) >= 0 then begin
+          if PathOwners.IndexOf(LowerCase(target) + '=' + rowkey) < 0 then
             Issue(source, n, 'target_conflict', target);
           Continue;
         end;
-        PathKeys.Add(LowerCase(target) + '=' + rowkey);
+        PathKeys.Add(LowerCase(target));
+        PathOwners.Add(LowerCase(target) + '=' + rowkey);
         Paths.Add(Csv(target) + ',' + Csv(StableKey(source)) + ',' + IntToStr(n) + ',' +
           Csv(setVoice[v]) + ',' + Csv(method) + ',' + Csv(StableKey(info)));
         Inc(TargetCount);
@@ -414,28 +523,20 @@ begin
 end;
 
 procedure StartExport(folder: string);
-var f, g, e: IInterface; i, j, k, flags: integer; s: string;
 begin
   InfoCount := 0; ResponseCount := 0; TargetCount := 0;
+  VoiceCacheHits := 0; VoiceCacheMisses := 0; ExportStarted := Now;
   OutputDir := IncludeTrailingBackslash(folder);
   Lines := TStringList.Create; Paths := TStringList.Create; Issues := NewSet;
-  Audit := TStringList.Create; LineKeys := NewSet; PathKeys := NewSet;
+  Audit := TStringList.Create; LineKeys := NewSet; PathKeys := NewSet; PathOwners := NewSet;
   Seen := NewSet; Voices := NewSet; Defaults := NewSet; Recursion := NewSet;
+  VoiceCache := NewSet;
+  QuestConditionCache := NewSet;
+  QuestUncertainCache := NewSet;
+  VoiceFiles := NewSet;
   Lines.Add('id,info_formid,response_number,needs_voice,voice_text (stage directions removed),subtitle_text (as in game unchanged),export_notes');
   Paths.Add('game_path (relative to Data),info_formid,response_number,voice_type,resolution,context_info');
-  // All available VTYP are collected, including custom voices, not a fixed list.
-  for i := 0 to Pred(FileCount) do begin
-    f := FileByIndex(i); g := GroupBySignature(f, 'VTYP');
-    for j := 0 to Pred(ElementCount(g)) do begin
-      e := WinningOverride(ElementByIndex(g, j));
-      s := LowerCase(EditorID(e));
-      if GetIsDeleted(e) or (s = '') then Continue;
-      Voices.AddObject(s, e);
-      flags := GetElementNativeValues(e, 'DNAM');
-      if (flags and 1) <> 0 then Defaults.Add(s);
-    end;
-  end;
-  AddMessage('FishAI: voice types ' + IntToStr(Voices.Count) + ', default dialogue ' + IntToStr(Defaults.Count));
+  // The voice universe is built at the first INFO, from its plugin and masters.
 end;
 
 // xEdit's JvInterpreter TStrings.SaveToFile adapter accepts only one
@@ -477,6 +578,8 @@ begin
   report.Add('Unique responses: ' + IntToStr(ResponseCount));
   report.Add('Target paths: ' + IntToStr(TargetCount));
   report.Add('Review entries: ' + IntToStr(Issues.Count - 1));
+  report.Add('Voice cache: ' + IntToStr(VoiceCacheHits) + ' hits, ' +
+    IntToStr(VoiceCacheMisses) + ' misses, ' + IntToStr(VoiceCache.Count) + ' entries.');
   report.AddStrings(Audit);
   report.Add('Source: selected INFOs, effective winning overrides in this xEdit session.');
   report.Add('Read only. No plugins modified; no AI/network/Python required.');
@@ -484,13 +587,16 @@ begin
   report.Add('Review review.csv first. Rows without paths do not create jobs.');
   report.Add('Default/condition voice sets are conservative candidates, not a full runtime CTDA evaluator.');
   report.Add('Dynamic aliases, LinkTo-only speakers and overridden audio ownership may need manual mapping.');
-  report.Add('All voice types are included, children too. voice_text has [..], <..> and *..* removed; subtitle_text is unchanged.');
+  report.Add('Voice types: ' + IntToStr(Voices.Count) + ' (default dialogue ' + IntToStr(Defaults.Count) +
+    ') from the selected plugins and their masters: ' + VoiceFiles.CommaText);
+  report.Add('Voice types of other loaded mods are not used. Children are included. voice_text has [..], <..> and *..* removed; subtitle_text is unchanged.');
   SaveUtf8(report, OutputDir + 'EXPORT-REPORT.txt');
   report.Free;
   AddMessage('FishAI: saved ' + OutputDir);
   AddMessage('FishAI: responses=' + IntToStr(ResponseCount) + ', targets=' + IntToStr(TargetCount) + ', review=' + IntToStr(Issues.Count - 1));
-  Lines.Free; Paths.Free; Issues.Free; Audit.Free; LineKeys.Free; PathKeys.Free;
-  Seen.Free; Voices.Free; Defaults.Free; Recursion.Free;
+  Lines.Free; Paths.Free; Issues.Free; Audit.Free; LineKeys.Free; PathKeys.Free; PathOwners.Free;
+  Seen.Free; Voices.Free; Defaults.Free; Recursion.Free; VoiceFiles.Free;
+  FreeSetCache(VoiceCache); FreeSetCache(QuestConditionCache); QuestUncertainCache.Free;
 end;
 
 end.

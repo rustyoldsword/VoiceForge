@@ -7,9 +7,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('F:/development/VoiceForge')
-FILES = ['.gitignore', 'LICENSE', 'README.md', 'main.py', 'requirements.txt', 'tests/test_core.py']
+FILES = ['.gitignore', 'LICENSE', 'README.md', 'main.py', 'requirements.txt', 'tests/test_core.py',
+         'tests/test_xedit_import.py']
 DIRS = ['voiceforge', 'tools', 'packaging', 'templates']
-SKIP = {'__pycache__', 'private_strings.txt', 'FishAIFree.spec'}
+# Local-only helpers of the maintainer's own setup (their paths are private) stay out of the public tree.
+SKIP = {'__pycache__', 'private_strings.txt', 'FishAIFree.spec', 'new_project_from_xedit.py',
+        'voiceforge-project.local.json', 'NEW-PROJECT-FROM-XEDIT-RU.md'}
 
 
 def main():

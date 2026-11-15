@@ -7,6 +7,7 @@ import re
 import sqlite3
 import time
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
 MODEL = 's2.1-pro-free'
@@ -46,12 +47,16 @@ def relative(value):
     return value
 
 
+@lru_cache(maxsize=64)
+def _resolved(root):
+    return Path(root).resolve()
+
+
 def contained(root, value):
-    root = Path(root).resolve()
-    result = (root / relative(value)).resolve()
-    if not result.is_relative_to(root):
-        raise ValueError('Path escapes project directory')
-    return result
+    # relative() already refuses drives, absolute paths and '', '.', '..' parts, so the joined path
+    # cannot leave root. No per-path resolve(): on Windows it walks the file system each time, and
+    # opening a project with 190,000 FUZ targets took two minutes.
+    return _resolved(str(root)) / relative(value)
 
 
 def validate_jobs(jobs):
