@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QSplitter, QAbstractItemView, QCheckBox, QScrollArea)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, MACHINE_SETTINGS, share_machine_settings, project_refs, references_path, create_project, read_json, read_refs, jobs_from_csv, write_json
+from .project import Project, MODEL, DEFAULT_TOOLS, DEFAULT_SECRET, MACHINE_SETTINGS, MAX_FISH_WORKERS, share_machine_settings, project_refs, references_path, create_project, read_json, read_refs, jobs_from_csv, write_json
 from .engine import Pipeline, verify, regenerate, legacy_snapshot
 from .xedit_import import (CHILD_VOICES, is_export_folder, load_plan, prepare as prepare_from_export,
     saved_substitutions, unused_project_path)
@@ -591,7 +591,7 @@ class Window(QMainWindow):
             row.addWidget(button('…', lambda checked=False, e=edit, d=folder: self.pick_setting(e, d)))
             form.addRow(title, row)
         self.fish_workers = QSpinBox()
-        self.fish_workers.setRange(1, 3)
+        self.fish_workers.setRange(1, MAX_FISH_WORKERS)
         self.lip_workers, self.xwm_workers = QSpinBox(), QSpinBox()
         for spin in (self.lip_workers, self.xwm_workers):
             spin.setRange(1, 32)

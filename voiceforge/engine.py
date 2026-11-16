@@ -21,7 +21,7 @@ import msgpack
 from dotenv import dotenv_values
 
 from . import fuz_backend as fuz
-from .project import MODEL, Project, connection, contained, project_refs, read_json, references_path, relative, write_json
+from .project import MAX_FISH_WORKERS, MODEL, Project, connection, contained, project_refs, read_json, references_path, relative, write_json
 
 API = 'https://api.fish.audio/v1/tts'
 
@@ -71,7 +71,7 @@ def valid_wav(path):
 class FishClient:
     def __init__(self, config, stop, emit):
         self.config, self.stop, self.emit = config, stop, emit
-        self.gate = threading.Semaphore(max(1, min(3, int(config['fish_workers']))))
+        self.gate = threading.Semaphore(max(1, min(MAX_FISH_WORKERS, int(config['fish_workers']))))
         self.cache, self.lock = {}, threading.Lock()
         self.key = None
         self.refs = None
@@ -286,7 +286,8 @@ class Pipeline:
                         if not jobs:
                             break
                         self.log(f'Automatic retry {cycle}: {len(jobs)} jobs')
-                    count = min(12, max(1, args.lip_workers + args.xwm_workers + 2))
+                    # Room for every Fish request plus the LipGenerator/xWMAEncode workers, so neither side starves the other.
+                    count = max(1, int(p.config['fish_workers']) + args.lip_workers + args.xwm_workers)
                     with ThreadPoolExecutor(max_workers=count) as executor:
                         pending = set()
                         for job in jobs:

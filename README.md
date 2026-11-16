@@ -1,4 +1,4 @@
-# VoiceForge 0.4.1
+# VoiceForge 0.4.2
 
 A Windows desktop studio that voices Skyrim dialogue with Fish Audio: it takes your mod's lines, has Fish speak them in
 the voice you choose, and builds game-ready FUZ files (LIP lip-sync + XWM audio) at the exact paths the game reads.
@@ -127,6 +127,13 @@ See `licenses\`. Qt for Python (PySide6) is LGPLv3. The Atelier UI font is Inter
 License 1.1. Fish Audio is a third-party service with its own terms.
 
 ## Changes
+
+**0.4.2**
+- Up to 50 Fish requests at once (Settings → Fish requests; 12 for new projects). 0.4.1 allowed only 3, and since
+  every request mostly waits for the network the run stayed near 35 lines per minute with the CPU idle; on the free
+  model 12 requests gave about 200 lines per minute without a single HTTP 429. Fish's documented account limits
+  (5 under $100 prepaid, 15 from $100, 50 from $1,000) may apply to paid models: if the event log keeps showing
+  HTTP 429, lower the number.
 
 **0.4.1**
 - The tools folder and the API key file are remembered: set them once in Settings (with or without a project open)

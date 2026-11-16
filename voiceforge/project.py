@@ -194,6 +194,10 @@ def connection(project):
 
 
 MACHINE_SETTINGS = ('tools', 'secret')
+# Parallel Fish requests. Fish limits requests in progress per account by prepaid amount: 5 under $100, 15 from
+# $100, 50 from $1,000 (docs.fish.audio, pricing and rate limits); above that it answers HTTP 429.
+MAX_FISH_WORKERS = 50
+DEFAULT_FISH_WORKERS = 12  # the free model ran 232,299 requests at 12 without a single 429 (27-29.10.2026)
 
 
 def share_machine_settings(config, remembered):
@@ -232,7 +236,7 @@ def create_project(root, name, jobs, *, references='', raw_source='', target_pre
     config = dict(version=1, name=name, model=MODEL, tools=DEFAULT_TOOLS, secret=DEFAULT_SECRET,
                   references=str(Path(references).resolve()) if references else '',
                   raw_source=str(Path(raw_source).resolve()) if raw_source else '',
-                  borrowed_voices=dict(borrowed or {}), fish_workers=3, lip_workers=4, xwm_workers=4, cpu_limit=75, temp_limit=0,
+                  borrowed_voices=dict(borrowed or {}), fish_workers=DEFAULT_FISH_WORKERS, lip_workers=4, xwm_workers=4, cpu_limit=75, temp_limit=0,
                   auto_retries=1, pad_min_duration=0.5, created=time.time(), manifest_sha256=manifest_hash(normalized))
     write_json(root / 'project.json', config)
     write_json(root / 'jobs.json', normalized)
@@ -256,7 +260,7 @@ class Project:
             write_json(self.root / 'project.json', self.config)
         if self.config.get('model') != MODEL:
             raise ValueError('Only the explicitly selected free model is supported')
-        for key, low, high in [('fish_workers', 1, 3), ('lip_workers', 1, 32), ('xwm_workers', 1, 32),
+        for key, low, high in [('fish_workers', 1, MAX_FISH_WORKERS), ('lip_workers', 1, 32), ('xwm_workers', 1, 32),
                               ('cpu_limit', 10, 100), ('auto_retries', 0, 3), ('temp_limit', 0, 100)]:
             if not low <= int(self.config.get(key, low)) <= high:
                 raise ValueError(f'Invalid setting: {key}')
