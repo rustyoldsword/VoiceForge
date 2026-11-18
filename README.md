@@ -1,4 +1,4 @@
-# VoiceForge 0.4.2
+# VoiceForge 0.4.3
 
 A Windows desktop studio that voices Skyrim dialogue with Fish Audio: it takes your mod's lines, has Fish speak them in
 the voice you choose, and builds game-ready FUZ files (LIP lip-sync + XWM audio) at the exact paths the game reads.
@@ -127,6 +127,21 @@ See `licenses\`. Qt for Python (PySide6) is LGPLv3. The Atelier UI font is Inter
 License 1.1. Fish Audio is a third-party service with its own terms.
 
 ## Changes
+
+**0.4.3**
+- Restarting a long run starts at once. 0.4.2 reopened every finished WAV and FUZ before the first new request,
+  so after 63,000 finished lines **Run pipeline** looked dead for about ten minutes (JOBS / MIN stayed at 0).
+  Finished lines whose FUZ files are still there are now skipped in seconds; the event log says how many. A line
+  whose file was deleted is done again. File contents are still checked at the end of a full run and by
+  **Verify all FUZ**.
+- Fixed: a run could stop at once with "FISH_API_KEY is missing" although the key file was fine. Requests that
+  started at the same moment saw an empty key while the first one was still reading the file; the key is now read
+  once and handed to every request.
+- xEdit exporter: scene lines are voiced. The script read the topic from the wrong field of a scene action, so
+  every line spoken in a scene went to `review.csv` with no voice and created no job. Scene actors are now found by
+  topic. When the game picks the scene actor at runtime (an alias filled by Papyrus or by conditions), the line gets
+  the voice types that allow default dialogue, narrowed by the alias conditions, and is listed in `review.csv` for a
+  coverage check. Copy both PAS files again.
 
 **0.4.2**
 - Up to 50 Fish requests at once (Settings → Fish requests; 12 for new projects). 0.4.1 allowed only 3, and since

@@ -46,9 +46,10 @@ included under the same conditions as the others; VoiceForge can skip them when 
 
 This is a projection of conditions onto voice types, not a game simulator: an intersection of two voice sets can be
 wider than the NPCs that really meet both conditions. Shared lines without a clear speaker use voice types that allow
-default dialogue and are marked in `review.csv` — check coverage before you voice them in bulk. Aliases filled by
-Papyrus and voices reachable only through LinkTo chains are not reconstructed. An unresolved scene actor is skipped and
-reported. For an INFO overridden by another plugin the audio path is not guessed: the line stays in `lines.csv`, the
+default dialogue and are marked in `review.csv` — check coverage before you voice them in bulk. A scene line whose
+actor the game picks at runtime (an alias filled by Papyrus or by conditions) gets the same default-dialogue voice
+types, narrowed by the alias conditions, and is marked the same way. Voices reachable only through LinkTo chains are
+not reconstructed. A scene line whose topic no scene speaks is skipped and reported. For an INFO overridden by another plugin the audio path is not guessed: the line stays in `lines.csv`, the
 reason goes to `review.csv`. **Lines in `lines.csv` without a row in `paths.csv` create no job.**
 
 Empty text and pure punctuation get `needs_voice=no`. In `voice_text` (what Fish speaks) stage directions `[..]`,

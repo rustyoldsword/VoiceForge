@@ -17,6 +17,12 @@ var
   VoiceCacheHits, VoiceCacheMisses: integer;
   ExportStarted: TDateTime;
   VoiceUncertain: boolean;
+  // Scene topic -> scenes that speak it, built once by scanning every SCEN record. Referenced-by
+  // info is not used for this: xEdit may not have built it yet, and then every scene line was lost.
+  SceneIndex: TStringList;
+  // Set by AliasVoices when the alias is filled at runtime (conditions, script, nearest actor)
+  // rather than by a fixed reference or a unique actor.
+  AliasDynamic: boolean;
 
 function NewSet: TStringList;
 begin
@@ -208,8 +214,12 @@ begin
     else if ElementExists(a, 'External Alias Reference') then
       AliasVoices(Link(a, 'External Alias Reference\ALEQ'),
         GetElementNativeValues(a, 'External Alias Reference\ALEA'), info, dest, depth + 1)
-    else if ElementExists(a, 'Conditions') then
-      ConditionsVoices(ElementByPath(a, 'Conditions'), quest, info, dest, depth + 1);
+    else begin
+      // No fixed fill: the game (or a script) picks the actor, e.g. the nearest matching NPC.
+      AliasDynamic := True;
+      if ElementExists(a, 'Conditions') then
+        ConditionsVoices(ElementByPath(a, 'Conditions'), quest, info, dest, depth + 1);
+    end;
     e := Link(a, 'VTCK');
     if Assigned(e) then begin
       limit := NewSet;
@@ -300,10 +310,51 @@ begin
   finally groupSet.Free; one.Free; end;
 end;
 
+// The topic of a scene dialogue action sits in its Dialogue struct ('Dialogue \ DATA - Topic');
+// reading 'DATA' on the action itself found nothing, so no scene line ever got a speaker.
+function SceneTopic(action: IInterface): IInterface;
+begin
+  Result := Link(action, 'Dialogue\DATA');
+end;
+
+procedure IndexScene(e: IInterface);
+var w, actions, action: IInterface; k: integer; topicKey, seen: string;
+begin
+  w := WinningOverride(e);
+  if GetIsDeleted(w) then Exit;
+  seen := '';
+  actions := ElementByPath(w, 'Actions');
+  for k := 0 to Pred(ElementCount(actions)) do begin
+    action := ElementByIndex(actions, k);
+    if GetElementEditValues(action, 'ANAM') <> 'Dialogue' then Continue;
+    topicKey := StableKey(SceneTopic(action));
+    if (topicKey = '') or (Pos('|' + topicKey + '|', seen) > 0) then Continue;
+    seen := seen + '|' + topicKey + '|';
+    SceneIndex.AddObject(topicKey, w);
+  end;
+end;
+
+procedure BuildSceneIndex;
+var f, g, e: IInterface; i, j: integer;
+begin
+  SceneIndex := TStringList.Create;
+  SceneIndex.Sorted := True; SceneIndex.Duplicates := dupAccept;
+  for i := 0 to Pred(FileCount) do begin
+    f := FileByIndex(i); g := GroupBySignature(f, 'SCEN');
+    for j := 0 to Pred(ElementCount(g)) do begin
+      e := ElementByIndex(g, j);
+      // Each scene once, at its defining file, read in its winning version.
+      if GetFileName(GetFile(MasterOrSelf(e))) <> GetFileName(f) then Continue;
+      IndexScene(e);
+    end;
+  end;
+  AddMessage('FishAI: scene topics indexed ' + IntToStr(SceneIndex.Count));
+end;
+
 procedure InfoVoices(info: IInterface; dest: TStringList; var method: string);
-var topic, quest, e, scene, actions, action: IInterface;
-    qset, tmp, actors: TStringList; i, j: integer; isScene: boolean;
-    questKey: string; infoUncertain, questUncertain: boolean;
+var topic, quest, scene, e, actions, action: IInterface;
+    qset, tmp, actors: TStringList; i, j, first: integer; isScene, dynamic: boolean;
+    questKey, topicKey: string; infoUncertain, questUncertain: boolean;
 begin
   topic := Link(info, 'Topic');
   quest := Link(topic, 'QNAM');
@@ -332,31 +383,48 @@ begin
     end;
     isScene := GetElementEditValues(topic, 'DATA\Category') = 'Scene';
     if isScene then begin
-      e := MasterOrSelf(topic);
-      for i := 0 to Pred(ReferencedByCount(e)) do begin
-        scene := WinningOverride(ReferencedByIndex(e, i));
-        if Signature(scene) <> 'SCEN' then Continue;
-        if GetIsDeleted(scene) then Continue;
+      if not Assigned(SceneIndex) then BuildSceneIndex;
+      topicKey := StableKey(topic); dynamic := False;
+      // xEdit's interpreter evaluates both sides of 'and', so no index is read without its own guard.
+      first := SceneIndex.IndexOf(topicKey);
+      while first > 0 do begin
+        if SceneIndex[first - 1] <> topicKey then Break;
+        Dec(first);
+      end;
+      i := first;
+      if i < 0 then i := SceneIndex.Count;
+      while i < SceneIndex.Count do begin
+        if SceneIndex[i] <> topicKey then Break;
+        scene := ObjectToElement(SceneIndex.Objects[i]);
         actions := ElementByPath(scene, 'Actions');
         for j := 0 to Pred(ElementCount(actions)) do begin
           action := ElementByIndex(actions, j);
           if (GetElementEditValues(action, 'ANAM') = 'Dialogue') and
-             (StableKey(Link(action, 'DATA')) = StableKey(topic)) then begin
-            tmp.Clear;
+             (StableKey(SceneTopic(action)) = topicKey) then begin
+            tmp.Clear; AliasDynamic := False;
             AliasVoices(Link(scene, 'PNAM'), GetElementNativeValues(action, 'ALID'), info, tmp, 0);
-            if tmp.Count = 0 then begin
-              Issue(info, 0, 'unresolved_scene_actor', Name(scene));
-              dest.Clear; method := 'unresolved_scene'; Exit;
+            if AliasDynamic or (tmp.Count = 0) then begin
+              // Any actor the game picks can speak: bounded by the alias conditions, if any.
+              dynamic := True;
+              if tmp.Count = 0 then tmp.AddStrings(Voices);
             end;
             actors.AddStrings(tmp);
           end;
         end;
+        Inc(i);
       end;
       if actors.Count = 0 then begin
-        Issue(info, 0, 'unresolved_scene_actor', 'No static scene actor for topic');
+        Issue(info, 0, 'unresolved_scene_actor', 'No scene speaks this topic');
         dest.Clear; method := 'unresolved_scene'; Exit;
       end;
-      Intersect(dest, actors); method := 'scene_actor_and_conditions';
+      Intersect(dest, actors);
+      if dynamic then begin
+        Intersect(dest, Defaults); method := 'scene_runtime_actor_default_dialogue';
+        if VoiceUncertain then begin
+          dest.Clear; method := 'unresolved_voice_constraint';
+        end else
+          Issue(info, 0, 'candidate_coverage', 'Scene speaker is picked at runtime: Allow Default Dialog voice types; review coverage.');
+      end else method := 'scene_actor_and_conditions';
     end else if SameSet(dest, Voices) then begin
       Intersect(dest, Defaults); method := 'default_dialogue_candidates';
       if VoiceUncertain then begin
@@ -534,6 +602,7 @@ begin
   QuestConditionCache := NewSet;
   QuestUncertainCache := NewSet;
   VoiceFiles := NewSet;
+  SceneIndex := nil;
   Lines.Add('id,info_formid,response_number,needs_voice,voice_text (stage directions removed),subtitle_text (as in game unchanged),export_notes');
   Paths.Add('game_path (relative to Data),info_formid,response_number,voice_type,resolution,context_info');
   // The voice universe is built at the first INFO, from its plugin and masters.
@@ -586,7 +655,8 @@ begin
   report.Add('Import lines.csv + paths.csv as Pair CSV in VoiceForge.');
   report.Add('Review review.csv first. Rows without paths do not create jobs.');
   report.Add('Default/condition voice sets are conservative candidates, not a full runtime CTDA evaluator.');
-  report.Add('Dynamic aliases, LinkTo-only speakers and overridden audio ownership may need manual mapping.');
+  report.Add('Scene lines whose speaker the game picks at runtime (nearest matching actor, script fill) go to the Allow Default Dialog voice types, narrowed by the alias conditions.');
+  report.Add('LinkTo-only speakers and overridden audio ownership may need manual mapping.');
   report.Add('Voice types: ' + IntToStr(Voices.Count) + ' (default dialogue ' + IntToStr(Defaults.Count) +
     ') from the selected plugins and their masters: ' + VoiceFiles.CommaText);
   report.Add('Voice types of other loaded mods are not used. Children are included. voice_text has [..], <..> and *..* removed; subtitle_text is unchanged.');
@@ -597,6 +667,7 @@ begin
   Lines.Free; Paths.Free; Issues.Free; Audit.Free; LineKeys.Free; PathKeys.Free; PathOwners.Free;
   Seen.Free; Voices.Free; Defaults.Free; Recursion.Free; VoiceFiles.Free;
   FreeSetCache(VoiceCache); FreeSetCache(QuestConditionCache); QuestUncertainCache.Free;
+  if Assigned(SceneIndex) then SceneIndex.Free;
 end;
 
 end.

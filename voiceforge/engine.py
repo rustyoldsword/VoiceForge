@@ -74,6 +74,7 @@ class FishClient:
         self.gate = threading.Semaphore(max(1, min(MAX_FISH_WORKERS, int(config['fish_workers']))))
         self.cache, self.lock = {}, threading.Lock()
         self.key = None
+        self.key_lock = threading.Lock()
         self.refs = None
 
     def references(self, vt):
@@ -103,10 +104,14 @@ class FishClient:
             return result
 
     def generate(self, job, output):
-        if self.key is None:
-            self.key = os.environ.get('FISH_API_KEY', '')
-            if not self.key and self.config.get('secret'):
-                self.key = dotenv_values(self.config['secret']).get('FISH_API_KEY', '')
+        # Read once, under the lock, and publish only the finished value: requests that start together must not
+        # see the empty placeholder while the first one is still reading the key file.
+        with self.key_lock:
+            if self.key is None:
+                key = os.environ.get('FISH_API_KEY', '')
+                if not key and self.config.get('secret'):
+                    key = dotenv_values(self.config['secret']).get('FISH_API_KEY', '') or ''
+                self.key = key
         if not self.key:
             raise FatalAPI('FISH_API_KEY is missing; select the existing .env.local in Settings')
         # The model cannot be overridden by an environment variable or a failed request.
@@ -164,6 +169,26 @@ def builder_args(project):
         priority='below_normal', cache=str(project.root / 'cache'), no_link=True, keep_cache=False,
         lip_timeout=60, xwm_timeout=120, lip_original_attempts=2, lip_sanitized_attempts=3,
         xwm_attempts=3, pad_min_duration=float(c.get('pad_min_duration', 0.5)))
+
+
+def finished_on_disk(project, jobs):
+    """Ids of jobs the queue already marks done whose FUZ files are all still there.
+
+    Only a stat per target, no file is opened: reopening every finished WAV and FUZ on a restart kept 63,000
+    finished lines busy for about ten minutes before the first new request. Their content is checked by the
+    verification at the end of a full run and by Verify all FUZ."""
+    status = project.statuses()
+    out = project.root / 'output'
+    finished = set()
+    for job in jobs:
+        if status.get(job['id'], {}).get('status') != 'done':
+            continue
+        try:
+            if all(os.stat(contained(out, t)).st_size > 12 for t in job['targets']):
+                finished.add(job['id'])
+        except OSError:
+            pass
+    return finished
 
 
 def preflight(project, jobs, mode):
@@ -264,6 +289,15 @@ class Pipeline:
             with connection(p.root) as db:
                 db.execute("UPDATE tasks SET status='pending' WHERE status='running'")
             jobs = [p.by_id[x] for x in selected] if selected is not None else p.jobs
+            if mode != 'samples':
+                self.log(f'Checking {len(jobs)} lines against the output folder')
+                finished = finished_on_disk(p, jobs)
+                if finished:
+                    jobs = [j for j in jobs if j['id'] not in finished]
+                    self.log(f'{len(finished)} lines are already finished; {len(jobs)} left')
+                    if not jobs:
+                        self.log('Nothing left to do')
+                        return
             preflight(p, jobs, mode)
             self.log(f'Start {mode}: {len(jobs)} jobs; model={MODEL}')
             self.started = time.monotonic()
